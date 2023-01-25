@@ -1041,7 +1041,6 @@ class ArrayRegion : public VarBase {
 public:
   ArrayRegion(VarRegion *_absRegion, const VarDecl *_varDecl)
       : VarBase(arrayType), absRegion(_absRegion), varDecl(_varDecl) {
-    printf("Step 1 \n");
     const Type *type = varDecl->getType().getTypePtr();
     if (!type->isArrayType()) {
       fprintf(stderr, "该变量%s不是数组类型发生错误",
@@ -1058,20 +1057,16 @@ public:
       }
       len = CAType->getSize();
     }
-    printf("Step 2 \n");
+
     while (const ArrayType *arrayType = type->getAsArrayTypeUnsafe()) {
       type = arrayType->getElementType().getTypePtr();
     }
-
-    printf("Step 3 \n");
     elementType = type->getCanonicalTypeInternal();
     QualType qualType = elementType;
     while (isa<PointerType>(qualType.getCanonicalType())) {
       qualType = qualType->getPointeeType();
     }
     pureType = qualType;
-
-    printf("Step 4 \n");
 
     if (type->isBuiltinType())
       pureKind = Kind::Builtin;
