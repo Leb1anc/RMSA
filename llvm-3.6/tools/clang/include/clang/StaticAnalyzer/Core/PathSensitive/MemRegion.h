@@ -15,6 +15,7 @@
 
 #ifndef Test
 #define Test
+#endif
 
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
@@ -747,18 +748,21 @@ public:
   static bool classof(const MemRegion *R) {
     return R->getKind() == SymbolicRegionKind;
   }
-
+#ifdef Test
   ~SymbolicRegion() {
     if (!mallocRegion)
       delete mallocRegion;
   }
+#endif
 
 #ifdef Test
   // 如果当前堆区域属于C语言堆内存区域，则使用该类描述该堆内存的相关信息
   class MallocRegion {
 
+  public:
     enum HeapState { allocted, freed, leaked, unknowned, escaped };
 
+  private:
     HeapState state;
     int count;
     const int ByteLength;
@@ -782,6 +786,7 @@ public:
     _isHeap = true;
     mallocRegion = new MallocRegion(byteLength);
   }
+  MallocRegion *getMallocRegion() { return mallocRegion; }
 
 #endif
 };
@@ -949,8 +954,29 @@ public:
   const VarDecl *getDecl() { return varDecl; }
   BuiltinType::Kind getvarType() { return varType; }
 
-  bool isBuiltinType() {
-    return varType > BuiltinType::Void && varType < BuiltinType::NullPtr;
+  static bool isBuiltin(VarBase *varRegion) {
+    return varRegion->getRegionType() == RegionType::builtinType;
+  }
+};
+
+class EnumRegion : public VarBase {
+
+  VarRegion *absRegion;
+  const VarDecl *varDecl;
+
+public:
+  EnumRegion(VarRegion *_absRegion, const VarDecl *_varDecl)
+      : VarBase(builtinType), absRegion(_absRegion), varDecl(_varDecl) {
+    if (!varDecl->getType()->getUnqualifiedDesugaredType()->isEnumeralType())
+      fprintf(stderr, "该变量%s的 pureKind is not EnumType",
+              varDecl->getNameAsString().c_str());
+  }
+
+  VarRegion *getVarRegion() { return absRegion; }
+  const VarDecl *getDecl() { return varDecl; }
+
+  static bool isEnum(VarBase *varRegion) {
+    return varRegion->getRegionType() == RegionType::enumType;
   }
 };
 
@@ -958,7 +984,7 @@ public:
 class PtrRegion : public VarBase {
 
   //指向的数据类型
-  enum Kind { Builtin, Array, Struct, Union, Function };
+  enum Kind { Builtin, Array, Struct, Union, Enum, Function };
 
   //指针状态
   enum PtrState { null, toHeap, toStack, toGlobal, wild, dangling, toUnknown };
@@ -1023,13 +1049,16 @@ public:
   PtrState getPtrState() { return state; }
   void setPtrState(PtrState _state) { state = _state; }
 
+  static bool isPtr(VarBase *varRegion) {
+    return varRegion->getRegionType() == RegionType::ptrType;
+  }
   // void setPtrState(Expr *initExpr, CheckerContext &C);
 };
 
 //数组结构区域，记录数组的初始化长度
 class ArrayRegion : public VarBase {
 
-  enum Kind { Builtin, Array, Struct, Union, Function };
+  enum Kind { Builtin, Array, Struct, Union, Enum, Function };
 
   VarRegion *absRegion;
   const VarDecl *varDecl;
@@ -1076,6 +1105,8 @@ public:
       pureKind = Kind::Struct;
     else if (pureType->isUnionType())
       pureKind = Kind::Union;
+    else if (type->isEnumeralType())
+      pureKind = Kind::Enum;
     else if (type->isFunctionType())
       pureKind = Kind::Function;
     else {
@@ -1089,6 +1120,10 @@ public:
   QualType getElementType() { return elementType; }
   QualType getPureType() { return pureType; }
   Kind getPureKind() { return pureKind; }
+
+  static bool isArrray(VarBase *varRegion) {
+    return varRegion->getRegionType() == RegionType::arrayType;
+  }
 };
 
 //数据结构体区域
@@ -1115,8 +1150,11 @@ public:
   VarRegion *getVarRegion() { return absRegion; }
   const VarDecl *getDecl() { return varDecl; }
   QualType getType() { return varDecl->getType(); }
-};
 
+  static bool isStruct(VarBase *varRegion) {
+    return varRegion->getRegionType() == RegionType::structType;
+  }
+};
 #endif
 
 class FieldRegion : public DeclRegion {
@@ -1217,11 +1255,14 @@ class VarRegion : public DeclRegion {
 
   friend class MemRegionManager;
 
+#ifdef Test
   VarBase *varRegion;
+#endif
 
   // Constructors and private methods.
   VarRegion(const VarDecl *vd, const MemRegion *sReg)
       : DeclRegion(vd, sReg, VarRegionKind) {
+#ifdef Test
     if (vd->getType()->getUnqualifiedDesugaredType()->isBuiltinType()) {
       varRegion = new BuiltinRegion(this, vd);
     } else if (vd->getType()->getUnqualifiedDesugaredType()->isPointerType()) {
@@ -1239,6 +1280,7 @@ class VarRegion : public DeclRegion {
               vd->getNameAsString().c_str(),
               vd->getType()->getUnqualifiedDesugaredType()->getTypeClassName());
     }
+#endif
   }
 
   static void ProfileRegion(llvm::FoldingSetNodeID &ID, const VarDecl *VD,
@@ -1247,11 +1289,17 @@ class VarRegion : public DeclRegion {
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) const override;
+
+#ifdef Test
   ~VarRegion() { delete varRegion; }
+#endif
 
 public:
   const VarDecl *getDecl() const { return cast<VarDecl>(D); }
+
+#ifdef Test
   VarBase *getVarReigon() { return varRegion; }
+#endif
 
   const StackFrameContext *getStackFrame() const;
 
@@ -1635,5 +1683,4 @@ static inline raw_ostream &operator<<(raw_ostream &os,
 }
 } // namespace llvm
 
-#endif
 #endif
